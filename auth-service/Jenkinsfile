@@ -1,0 +1,66 @@
+pipeline {
+	agent any
+	
+	environment {
+		SONARQUBE_SERVER = 'SonarQube'
+		DOCKER_IMAGE = "vaishnavi453/auth-service:${env.BUILD_NUMBER}"
+		REGISTRY_CREDENTIALS = 'dockerhub'
+		TRIVY_SEVERITY = 'HIGH,CRITICAL'
+	}
+	
+	stages {
+
+		stage('checkout code') {
+			steps {
+				checkout scm
+			}
+		}
+		
+		stage('Install Dependencies') {
+			steps {
+				dir('auth-service') {
+					sh 'npm install'
+				}
+			}
+		}
+		
+		stage('SonarQube Analysis') {
+			steps {
+				withSonarQubeEnv("${SONARQUBE_SERVER}") {
+					dir('auth-service') {
+						sh 'npx sonar-scanner -Dsonar.projectKey=auth-service -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_AUTH_TOKEN'
+					}
+				}	
+			}
+		}
+		
+		stage('Build Docker Image') {
+			steps {
+				script {
+					sh "docker build -t $DOCKER_IMAGE auth-service"
+				}
+			}		
+		}
+	
+		stage('Trivy Scan') {
+			steps {
+				sh "trivy image --severity ${TRIVY_SEVERITY} --exit-code 1 --no-progress $DOCKER_IMAGE || true"
+			}
+		}
+
+		stage('Push Docker Image') {
+			steps {
+				withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+					sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+					sh "docker push $DOCKER_IMAGE"
+				}
+			}
+		}
+	}
+	
+	post {
+		always {
+			cleanWs()
+		}
+	}
+}
