@@ -7,6 +7,10 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+app.get('/health', (req, res) => {
+  res.status(200).send('Product Service is healthy!');
+});
+
 const productRoutes = require('./routes/productRoutes');
 app.use('/api/products', productRoutes);
 
